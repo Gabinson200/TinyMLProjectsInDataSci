@@ -192,6 +192,63 @@ If you see this, it means that a small program has been built and executed that 
 the trained TensorFlow Lite model, runs some example inputs through it, and got the
 expected outputs.
 
+We modified the bazel build dependencies and micro_speech_test.cc file to run tests on
+all the models created by us. To use the updated tests:
+Move BUILD and micro_speech_test.cc files into TFLite-Micro repo or copy this entire 
+micro_speech_example into a TFLM repo built from source on Linux
+
+Move conv_model.tflite file into TFLIte-Micro models folder
+or other .tflite versions of models
+
+--Run
+bazel run tensorflow/lite/micro/examples/micro_speech:micro_speech_test --verbose_failures
+
+--To change model
+Move tflite file into models folder
+Copy and modify these lines
+generate_cc_arrays(
+    name = "generated_conv_model_cc",
+    src = "models/conv_model.tflite",
+    out = "models/conv_model_data.cc",
+)
+
+generate_cc_arrays(
+    name = "generated_conv_model_hdr",
+    src = "models/conv_model.tflite",
+    out = "models/conv_model_data.h",
+)
+
+cc_library(
+    name = "conv_model_data",
+    srcs = [
+        ":generated_conv_model_cc",
+    ],
+    hdrs = [
+        ":generated_conv_model_hdr",
+    ],
+)
+
+cc_test(
+    name = "micro_speech_test",
+    srcs = [
+        "micro_speech_test.cc",
+    ],
+    deps = [
+        ":audio_preprocessor_model_data",
+        ":audio_sample_test_data_1000ms",
+        ":audio_sample_test_data_30ms",
+        ":micro_model_settings",
+        ":micro_speech_model_data",
+        ":conv_model_data",
+        #### INSERT CC_LIBRARY NAME HERE ####
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
 To understand how TFLM does this, you can look at the source in the
 [micro_speech_test.cc](micro_speech_test.cc) file.
 It's a fairly small amount of code that executes the following steps:
@@ -204,6 +261,60 @@ that has been compiled into the program
 1) Execute a single inference operation using `MicroInterpreter::invoke`,
 with the spectrogram features as input, and category probabilities as output
 1) Check the largest category probability for a match with the speech sample label.
+
+Output should looks something like this:
+
+```bash
+(tinyml) [aw@anubis tflite-micro]$ bazel run tensorflow/lite/micro/examples/micro_speech:micro_speech_test --verbose_failures
+INFO: Analyzed target //tensorflow/lite/micro/examples/micro_speech:micro_speech_test (0 packages loaded, 0 targets configured).
+INFO: Found 1 target...
+Target //tensorflow/lite/micro/examples/micro_speech:micro_speech_test up-to-date:
+  bazel-bin/tensorflow/lite/micro/examples/micro_speech/micro_speech_test
+INFO: Elapsed time: 0.161s, Critical Path: 0.04s
+INFO: 1 process: 1 internal.
+INFO: Build completed successfully, 1 total action
+INFO: Running command line: external/bazel_tools/tools/test/test-setup.sh tensorflow/lite/micro/examples/micro_speech/micro_speech_test
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //tensorflow/lite/micro/examples/micro_speech:micro_speech_test
+-----------------------------------------------------------------------------
+Testing NoFeatureTest
+AudioPreprocessor model arena size = 11592
+Testing YesFeatureTest
+AudioPreprocessor model arena size = 11592
+Testing NoTest
+AudioPreprocessor model arena size = 11592
+MicroSpeech model arena size = 7480
+MicroSpeech category predictions for <no>
+  0.0000 silence
+  0.0547 unknown
+  0.0000 yes
+  0.9453 no
+Testing YesTest
+AudioPreprocessor model arena size = 11592
+MicroSpeech model arena size = 7480
+MicroSpeech category predictions for <yes>
+  0.0000 silence
+  0.0000 unknown
+  0.9961 yes
+  0.0000 no
+Testing SilenceTest
+AudioPreprocessor model arena size = 11592
+MicroSpeech model arena size = 7480
+MicroSpeech category predictions for <silence>
+  0.3359 silence
+  0.2344 unknown
+  0.2344 yes
+  0.1953 no
+Testing NoiseTest
+AudioPreprocessor model arena size = 11592
+MicroSpeech model arena size = 7480
+MicroSpeech category predictions for <silence>
+  0.9688 silence
+  0.0117 unknown
+  0.0078 yes
+  0.0117 no
+6/6 tests passed
+```
 
 ## Run the evaluate.py script on a development machine
 The [evaluate.py](evaluate.py#L166) script predicts the category of a single audio sample
